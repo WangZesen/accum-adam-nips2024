@@ -1,0 +1,5 @@
+**/__pycache__
+/transformer/data
+/transformer/log*/
+/transformer/image
+/transformer/config/eval/tmp.eval.toml
