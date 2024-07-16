@@ -1,3 +1,4 @@
+from statistics import mean
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
@@ -68,20 +69,52 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
         if (not self._drop_last) and (len(batch) > 0):
             self._batches.append(batch)
+        
+        # self._batches = self._batches[:6000] # TODO: DEBUG ONLY
+        self._time_taken = [[0.0, 0] for _ in range(len(self._batches))]
+    
+
+    def _generate_indices_based_on_time(self):
+        g = torch.Generator()
+        g.manual_seed(self._epoch + self._seed)
+        indices = torch.randperm(len(self._batches) // self._num_replicas * self._num_replicas, generator=g).tolist()
+        avg = self._get_global_avg()
+        local_indices = indices[self._rank:len(self._batches) // self._num_replicas * self._num_replicas:self._num_replicas]
+        local_indices.sort(key=lambda x: self._time_taken[x][0] / self._time_taken[x][1] if self._time_taken[x][1] > 0 else avg)
+
+        # if self._rank == 0:
+        # print([self._time_taken[x][0] / self._time_taken[x][1] if self._time_taken[x][1] > 0 else avg for x in local_indices])
+        # exit(0)
+        
+        for i in range(len(local_indices)):
+            index = i * self._num_replicas + self._rank
+            indices[index] = local_indices[i]
+        return indices
+
 
     def __iter__(self) -> Iterator[List[int]]:
-        if self._shuffle:
-            g = torch.Generator()
-            g.manual_seed(self._epoch + self._seed)
-            indices = torch.randperm(len(self._batches), generator=g).tolist()
+
+        if self._epoch % 2 == 0:
+            if self._rank == 0:
+                print('using time-based sampling')
+            self._indices = self._generate_indices_based_on_time()
         else:
-            indices = list(range(len(self._batches)))
+            if self._rank == 0:
+                print('using random sampling')
+            if self._shuffle:
+                g = torch.Generator()
+                g.manual_seed(self._epoch + self._seed - 1)
+                self._indices = torch.randperm(len(self._batches) // self._num_replicas * self._num_replicas, generator=g).tolist()
+            else:
+                self._indices = list(range(len(self._batches)))
 
         num_batches = len(self._batches)
         num_batches_per_replica = num_batches // (self._num_replicas * self._accum_steps) * self._accum_steps
         for i in range(num_batches_per_replica):
             index = i * self._num_replicas + self._rank
-            yield self._batches[indices[index]]
+            yield self._batches[self._indices[index]]
+
+        
 
     def __len__(self) -> int:
         num_batches = len(self._batches)
@@ -89,3 +122,19 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
     def set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
+
+    def update_time_stats(self, time_stats: List[List[float]]) -> None:
+        for i in range(len(time_stats)):
+            self._time_taken[i][0] += time_stats[i][0]
+            self._time_taken[i][1] += time_stats[i][1]
+    
+    def get_local_indices(self) -> List[int]:
+        return self._indices[self._rank:len(self._batches) // self._num_replicas * self._num_replicas:self._num_replicas]
+
+    def _get_global_avg(self) -> float:
+        total_count = sum([x[1] for x in self._time_taken])
+        if total_count == 0:
+            return 0.0        
+        times = [x[0] / x[1] for x in self._time_taken if x[1] > 0]
+        avg = mean(times)
+        return avg

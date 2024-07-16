@@ -148,6 +148,26 @@ def gather_statistics(train_loss: float,
     return log
 
 
+def gather_time_stats(time_taken: List[float], indices: List[int]) -> List[List[float]]:
+    log = [time_taken, indices]
+
+    assert dist.is_available() and dist.is_initialized()
+    object_list = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(object_list, log)
+    
+    max_indice = max(max(x[1]) for x in object_list) + 1
+
+    all_count = [0] * max_indice
+    all_time = [0.0] * max_indice
+
+    for x in object_list:
+        for i in range(len(x[0])):
+            all_count[x[1][i]] += 1
+            all_time[x[1][i]] += x[0][i]
+
+    return list(zip(all_time, all_count))
+
+
 @torch.no_grad()
 def batch_beam_search(model: torch.nn.Module,
                       src: torch.Tensor,
