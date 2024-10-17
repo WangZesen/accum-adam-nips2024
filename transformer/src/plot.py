@@ -13,7 +13,7 @@ from conf import Train as TrainConfig
 from loguru import logger
 logger.remove()
 logger.add(sys.stdout)
-sns.set_theme(style='whitegrid', font_scale=1.4)
+sns.set_theme(style='whitegrid', font_scale=1.6)
 
 
 @dataclass
@@ -53,9 +53,11 @@ def get_label(train_cfg: TrainConfig,
               gpu_model: str,
               num_workers: int):
     if train_cfg.backend.lower() == 'pytorchddp':
-        label = f'DDP - {num_workers}x{gpu_model}'
+        #label = f'AllReduce - {num_workers}x{gpu_model}'
+        label = 'AllReduce'
     else:
-        label = f'Decent - {num_workers}x{gpu_model} - {train_cfg.decent.topology} - {train_cfg.optim.name} - {train_cfg.optim.lr}'
+        # label = f'Decent - {num_workers}x{gpu_model} - {train_cfg.decent.topology} - {train_cfg.optim.name} - {train_cfg.optim.lr}'
+        label = f'AccumAdam - {train_cfg.decent.topology}'
     for key, value in LABEL_MAP.items():
         label = label.replace(key, value)
     return label
@@ -67,6 +69,8 @@ def read_test_log(exp_dir: str):
             return tomllib.load(f)
     num_workers = 0
     test_log = pd.read_csv(os.path.join(exp_dir, 'test_log.csv'), sep=',')
+    test_log['BLEU Score'] *= 100
+    test_log['time'] /= 1000
     with open(os.path.join(exp_dir, 'train_cfg.dump.toml'), 'r') as f:
         dumped_train_cfg = f.read()
         matches = re.findall('world_size = .*\n', dumped_train_cfg)
@@ -87,11 +91,11 @@ def read_test_log(exp_dir: str):
 
 def plot(logs: pd.DataFrame, x: str, y: str, img_dir: str, xscale: str='linear', yscale: str='linear'):
     plt.clf()
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(6, 6))
     sns.lineplot(data=logs, x=x, y=y, style='label', hue='label', errorbar=('sd', 2))
     if y == 'BLEU Score':
         # plot baseline
-        plt.axhline(y=0.273, color='r', linestyle='--', label='baseline')
+        plt.axhline(y=27.3, color='r', linestyle='--', label='baseline')
     plt.xscale(xscale)
     plt.yscale(yscale)
     plt.xlim(left=0)
@@ -99,7 +103,7 @@ def plot(logs: pd.DataFrame, x: str, y: str, img_dir: str, xscale: str='linear',
     #     plt.ylim(bottom=0.2)
 
     if x == 'time':
-        plt.xlabel('Time (s)')
+        plt.xlabel('Time (1000 s)')
     elif x == 'step':
         plt.xlabel('Step')
     
@@ -107,9 +111,16 @@ def plot(logs: pd.DataFrame, x: str, y: str, img_dir: str, xscale: str='linear',
         plt.ylabel('BLEU Score')
     elif y == 'val_loss':
         plt.ylabel('Validation Loss (Cross Entropy)')
+        ax = plt.gca()
+        ax.text((10 + 25) // 2, 3.07, '~60% Speedup', horizontalalignment='center', verticalalignment='center', fontdict={'fontsize': 15, 'color': 'black'})
+        ax.annotate('',
+            xy=(10, 3.045),
+            xytext=(25, 3.045),
+            xycoords='data',
+            arrowprops=dict(color='black', arrowstyle="<->", lw=1))
 
     plt.tight_layout()
-    plt.savefig(img_dir, dpi=300, bbox_inches='tight')
+    plt.savefig(img_dir, bbox_inches='tight')
 
 
 def exclude_empty_dirs(exp_dirs: list):
@@ -142,35 +153,25 @@ def main():
     for label in time_values:
         time_values[label] = sorted(list(set(time_values[label])))
     
-    interp_logs = []
-    for exp_dir in exp_dirs:
-        test_log, _ = read_test_log(exp_dir)
-        if exclude_label(test_log): continue
-        interpolated = pd.DataFrame(columns=test_log.columns)
+    interp_logs = pd.concat(filter(lambda x: not exclude_label(x), [read_test_log(exp_dir)[0] for exp_dir in exp_dirs]))
 
-        for metric in METRICS:
-            if metric.log_name not in test_log.columns:
-                continue
-            
-            x = test_log['time'].to_list()
-            y = test_log[metric.log_name].to_list()
-            f = interp1d(x, y, kind='linear', fill_value='extrapolate')
-            interp = f(time_values[label])
-            interpolated[metric.label] = interp
-
-        label = test_log['label'].unique()[0]
-        interpolated['label'] = label
-
-        interp_logs.append(interpolated)
+    for label in interp_logs['label'].unique():
+        for i in interp_logs['epoch'].unique():
+            mean_time = interp_logs[(interp_logs['epoch'] == i) & (interp_logs['label'] == label)]['time'].mean()
+            interp_logs.loc[(interp_logs['epoch'] == i) & (interp_logs['label'] == label), 'time'] = mean_time
 
     # interp_log = pd.concat(interp_logs)
-    # test_log = pd.concat(filter(lambda x: exclude_label(x), [read_test_log(exp_dir)[0] for exp_dir in exp_dirs]))
+    # print(interp_log)
+    test_log = pd.concat(filter(lambda x: not exclude_label(x), [read_test_log(exp_dir)[0] for exp_dir in exp_dirs]))
 
-    # os.makedirs('image', exist_ok=True)
-    # plot(interp_log, 'time', 'BLEU Score', 'image/time_vs_bleu.png')
-    # plot(test_log, 'step', 'BLEU Score', 'image/step_vs_bleu.png')
-    # plot(interp_log, 'time', 'val_loss', 'image/time_vs_valloss.png')
-    # plot(test_log, 'step', 'val_loss', 'image/step_vs_valloss.png')
+    print(interp_logs.loc[interp_logs['epoch'] == 24][['label', 'BLEU Score', 'Meteor']])
+
+    os.makedirs('image', exist_ok=True)
+    plot(interp_logs, 'time', 'BLEU Score', 'image/time_vs_bleu.svg')
+    plot(test_log, 'step', 'BLEU Score', 'image/step_vs_bleu.svg')
+    plot(interp_logs, 'time', 'val_loss', 'image/time_vs_valloss.svg')
+    plot(test_log, 'step', 'val_loss', 'image/step_vs_valloss.svg')
+    plot(interp_logs, 'time', 'Meteor', 'image/time_vs_meteor.svg')
 
     logger.info(f'Plots generated at image/ directory')
 

@@ -3,3 +3,6 @@
 /transformer/log*/
 /transformer/image
 /transformer/config/eval/tmp.eval.toml
+/resnet/data
+/resnet/log
+/resnet/image

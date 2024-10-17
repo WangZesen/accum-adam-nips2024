@@ -330,7 +330,7 @@ def main():
             if rank == 0:
                 logger.info(f'[epoch {epoch+1}] train loss: {stats[0]:.6f}, train perplexity: {stats[1]:.6f}, ' \
                             + f'val loss: {stats[2]:.6f}, val perplexity: {stats[3]:.6f}, ' \
-                            + f'epoch time: {total_train_time:.3f} s')
+                            + f'epoch time: {epoch_train_time:.3f} s')
                 checkpoint_dir = ""
                 if ((epoch + 1) % cfg.train.log.checkpoint_freq == 0) or (epoch == cfg.train.max_epochs - 1):
                     checkpoint_dir = os.path.join(cfg.train.log.log_dir, 'checkpoints', f'checkpoint_{epoch+1}.pt')

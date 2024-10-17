@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 #SBATCH -J transformer
-#SBATCH --nodes=4
+#SBATCH --nodes=8
 #SBATCH --gpus-per-node=A40:4
-#SBATCH -t 7:00:00
+#SBATCH -t 2:00:00
 #SBATCH --switches=1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
@@ -19,7 +19,7 @@ cp $2 log/$SLURM_JOB_ID/data_cfg.toml
 cp $3 log/$SLURM_JOB_ID/train_cfg.toml
 
 srun $1 \
-    --nnodes=4 \
+    --nnodes=8 \
     --nproc_per_node=4 \
     --rdzv-backend=c10d \
     --rdzv-id=$RANDOM \
