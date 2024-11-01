@@ -102,6 +102,12 @@ def get_optim_fn(cfg: "Config") -> OPTIM_FN_TYPE:
             raise ValueError(f"Unsupported optimizer: {cfg.train.optim.name}")
 
 
+def get_sgd_optim_fn() -> OPTIM_FN_TYPE:
+    def fn(params: List[Tuple[Tensor, str]]):
+        return torch.optim.Adam([x for x, _ in params], lr=0.0007, betas=(0.9, 0.98), eps=1e-9)
+    return fn
+
+
 def get_lr_scheduler(cfg: "Config", optimizer: Optimizer) -> LRScheduler:
     match cfg.train.lr_scheduler.type.lower():
         case "inverse_sqrt":

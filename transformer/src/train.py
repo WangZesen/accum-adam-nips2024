@@ -32,7 +32,7 @@ import torch
 import tomli_w
 import pandas as pd
 from utils import SmoothedValue, initialize_dist, get_optim, get_lr_scheduler, \
-    get_optim_fn, get_lr_scheduler_fn, gather_statistics, get_run_name
+    get_optim_fn, get_lr_scheduler_fn, gather_statistics, get_run_name, get_sgd_optim_fn
 from conf import Config, parse_config, SPECIAL_TOKENS
 from data import get_datasets, get_dataloaders
 from model import get_model
@@ -239,7 +239,9 @@ def main():
                          get_optim_fn(cfg),
                          get_lr_scheduler_fn(cfg),
                          cfg.train.decent.topology,
-                         scaler)
+                         scaler,
+                         num_grad_buckets=3,
+                         grad_optim_fn=get_sgd_optim_fn())
     elif cfg.train.backend.lower() == 'pytorchddp':
         optimizer = get_optim(cfg, model)
         lr_scheduler = get_lr_scheduler(cfg, optimizer)

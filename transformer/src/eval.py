@@ -51,12 +51,12 @@ def evaluate_metrics(predictions: List[str],
                      references: List[List[str]],
                      bleu,
                      rouge,
-                     meteor,
-                     bertscore) -> Dict[str, float]:
+                     meteor) -> Dict[str, float]: # ,
+                     # bertscore
     bleu_score = bleu.compute(predictions=predictions, references=references)
     rouge_score = rouge.compute(predictions=predictions, references=references)
     meteor_score = meteor.compute(predictions=predictions, references=references)
-    bertscore_score = bertscore.compute(predictions=predictions, references=references, model_type='microsoft/deberta-xlarge-mnli')
+    # bertscore_score = bertscore.compute(predictions=predictions, references=references, model_type='microsoft/deberta-xlarge-mnli')
     return {
         'bleu': bleu_score['bleu'],
         'rouge1': rouge_score['rouge1'],
@@ -64,7 +64,7 @@ def evaluate_metrics(predictions: List[str],
         'rougeL': rouge_score['rougeL'],
         'rougeLsum': rouge_score['rougeLsum'],
         'meteor': meteor_score['meteor'],
-        'bertscore_f1': mean(bertscore_score['f1'])
+        # 'bertscore_f1': mean(bertscore_score['f1'])
     }
 
 
@@ -94,7 +94,7 @@ def main():
         columns.append('RougeL')
         columns.append('RougeLsum')
         columns.append('Meteor')
-        columns.append('Bertscore F1')
+        # columns.append('Bertscore F1')
         test_log = pd.DataFrame(columns=columns)
     out_log = pd.DataFrame(columns=test_log.columns)
     cnt = 0
@@ -130,7 +130,9 @@ def main():
     bleu = evaluate.load("bleu")
     meteor = evaluate.load("meteor")
     rouge = evaluate.load('rouge')
-    bertscore = evaluate.load("bertscore")
+    # bertscore = evaluate.load("bertscore")
+
+    logger.info('Start evaluating checkpoints...')
 
     '''
         Evaluate checkpoints
@@ -197,13 +199,13 @@ def main():
                     ])
 
         
-        result = evaluate_metrics(predictions, references, bleu, rouge, meteor, bertscore)
+        result = evaluate_metrics(predictions, references, bleu, rouge, meteor) #, bertscore)
 
         values = train_log.iloc[i].values.tolist()
         values.append(result['bleu'])
         values.extend([result['rouge1'], result['rouge2'], result['rougeL'], result['rougeLsum']])
         values.append(result['meteor'])
-        values.append(result['bertscore_f1'])
+        # values.append(result['bertscore_f1'])
 
         out_log.loc[cnt] = values
         cnt += 1

@@ -1,11 +1,11 @@
 max_tokens_per_batch = 25000
 label_smoothing = 0.1
 max_epochs = 24
-use_amp = true
+use_amp = false
 backend = 'decentdp'
 
 [decent]
-topology = 'ring'
+topology = 'alternating-exp-ring'
 
 [optim]
 name = "accum-adam"
@@ -30,7 +30,7 @@ warmup_decay = 0.01
 [log]
 log_freq = 250
 wandb_on = true
-wandb_project = "decentdp-transformer"
+wandb_project = "decentdp-transformer-pipe"
 checkpoint_freq = 1
 
 [reproduce]
